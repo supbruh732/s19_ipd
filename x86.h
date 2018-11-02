@@ -48,16 +48,29 @@ stosb(void *addr, int data, int cnt)
                "memory", "cc");
 }
 
+static inline void
+stosl(void *addr, int data, int cnt)
+{
+  asm volatile("cld; rep stosl" :
+               "=D" (addr), "=c" (cnt) :
+               "0" (addr), "1" (cnt), "a" (data) :
+               "memory", "cc");
+}
+
 struct segdesc;
 
 static inline void
 lgdt(struct segdesc *p, int size)
 {
-  volatile ushort pd[3];
+  volatile ushort pd[5];
 
   pd[0] = size-1;
-  pd[1] = (uint)p;
-  pd[2] = (uint)p >> 16;
+  pd[1] = (addr_t)p;
+  pd[2] = ((addr_t)p) >> 16;
+  pd[3] = ((addr_t)p) >> 32;
+  pd[4] = ((addr_t)p) >> 48;
+//  pd[5] = (addr_t)p >> 64;
+//  pd[6] = (addr_t)p >> 80;
 
   asm volatile("lgdt (%0)" : : "r" (pd));
 }
@@ -67,11 +80,13 @@ struct gatedesc;
 static inline void
 lidt(struct gatedesc *p, int size)
 {
-  volatile ushort pd[3];
+  volatile ushort pd[5];
 
   pd[0] = size-1;
-  pd[1] = (uint)p;
-  pd[2] = (uint)p >> 16;
+  pd[1] = (addr_t)p;
+  pd[2] = (addr_t)p >> 16;
+  pd[3] = (addr_t)p >> 32;
+  pd[4] = (addr_t)p >> 48;
 
   asm volatile("lidt (%0)" : : "r" (pd));
 }
@@ -82,25 +97,12 @@ ltr(ushort sel)
   asm volatile("ltr %0" : : "r" (sel));
 }
 
-static inline uint
+static inline addr_t
 readeflags(void)
 {
-  uint eflags;
-  asm volatile("pushfl; popl %0" : "=r" (eflags));
+  addr_t eflags;
+  asm volatile("pushf; pop %0" : "=r" (eflags));
   return eflags;
-}
-
-static inline uint
-xchg(volatile uint *addr, uint newval)
-{
-  uint result;
-  
-  // The + in "+m" denotes a read-modify-write operand.
-  asm volatile("lock; xchgl %0, %1" :
-               "+m" (*addr), "=a" (result) :
-               "1" (newval) :
-               "cc");
-  return result;
 }
 
 static inline void
@@ -121,100 +123,65 @@ sti(void)
   asm volatile("sti");
 }
 
-static inline void lcr0(uint val)
+static inline void
+hlt(void)
 {
-  asm volatile("movl %0,%%cr0" : : "r" (val));
+  asm volatile("hlt");
 }
 
-static inline uint rcr0(void)
+static inline uint
+xchg(volatile uint *addr, addr_t newval)
 {
-  uint val;
-  asm volatile("movl %%cr0,%0" : "=r" (val));
+  uint result;
+
+  // The + in "+m" denotes a read-modify-write operand.
+  asm volatile("lock; xchgl %0, %1" :
+               "+m" (*addr), "=a" (result) :
+               "1" (newval) :
+               "cc");
+  return result;
+}
+
+static inline addr_t
+rcr2(void)
+{
+  addr_t val;
+  asm volatile("mov %%cr2,%0" : "=r" (val));
   return val;
 }
 
-static inline uint rcr2(void)
+static inline void
+lcr3(addr_t val)
 {
-  uint val;
-  asm volatile("movl %%cr2,%0" : "=r" (val));
-  return val;
-}
-
-static inline void lcr3(uint val) 
-{
-  asm volatile("movl %0,%%cr3" : : "r" (val));
-}
-
-static inline uint rcr3(void)
-{
-  uint val;
-  asm volatile("movl %%cr3,%0" : "=r" (val));
-  return val;
-}
-
-static inline void lebp(uint val)
-{
-  asm volatile("movl %0,%%ebp" : : "r" (val));
-}
-
-static inline uint rebp(void)
-{
-  uint val;
-  asm volatile("movl %%ebp,%0" : "=r" (val));
-  return val;
-}
-
-static inline void lesp(uint val)
-{
-  asm volatile("movl %0,%%esp" : : "r" (val));
-}
-
-static inline uint resp(void)
-{
-  uint val;
-  asm volatile("movl %%esp,%0" : "=r" (val));
-  return val;
-}
-
-static inline void nop_pause(void)
-{
-  asm volatile("pause" : :);
+  asm volatile("mov %0,%%cr3" : : "r" (val));
 }
 
 //PAGEBREAK: 36
 // Layout of the trap frame built on the stack by the
 // hardware and by trapasm.S, and passed to trap().
 struct trapframe {
-  // registers as pushed by pusha
-  uint edi;
-  uint esi;
-  uint ebp;
-  uint oesp;      // useless & ignored
-  uint ebx;
-  uint edx;
-  uint ecx;
-  uint eax;
-
-  // rest of trap frame
-  ushort gs;
-  ushort padding1;
-  ushort fs;
-  ushort padding2;
-  ushort es;
-  ushort padding3;
-  ushort ds;
-  ushort padding4;
-  uint trapno;
-
-  // below here defined by x86 hardware
-  uint err;
-  uint eip;
-  ushort cs;
-  ushort padding5;
-  uint eflags;
-
-  // below here only when crossing rings, such as from user to kernel
-  uint esp;
-  ushort ss;
-  ushort padding6;
+   uint64 rax;      
+   uint64 rbx;
+   uint64 rcx;
+   uint64 rdx;
+   uint64 rbp;
+   uint64 rsi;
+   uint64 rdi;
+   uint64 r8;
+   uint64 r9;
+   uint64 r10;
+   uint64 r11;
+   uint64 r12;
+   uint64 r13;
+   uint64 r14;
+   uint64 r15;
+ 
+   uint64 trapno;
+   uint64 err;
+ 
+   uint64 rip;     
+   uint64 cs;
+   uint64 rflags;  
+   uint64 rsp;     
+   uint64 ss;      
 };

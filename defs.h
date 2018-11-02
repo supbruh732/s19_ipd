@@ -4,8 +4,18 @@ struct file;
 struct inode;
 struct pipe;
 struct proc;
+struct rtcdate;
 struct spinlock;
+struct sleeplock;
 struct stat;
+struct superblock;
+struct spinlock;
+
+
+//entry.S
+void wrmsr(uint msr, uint64 val);
+void syscall_entry(void);
+void ignore_sysret(void);
 
 // bio.c
 void            binit(void);
@@ -32,22 +42,29 @@ int             filestat(struct file*, struct stat*);
 int             filewrite(struct file*, char*, int n);
 
 // fs.c
+void            readsb(int dev, struct superblock *sb);
 int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
-struct inode*   ialloc(uint, short);
+struct inode*   ialloc(uint, short, struct inode*);
 struct inode*   idup(struct inode*);
-void            iinit(void);
+void            iinit(int dev);
 void            ilock(struct inode*);
 void            iput(struct inode*);
+void            ilock(struct inode*);
 void            iunlock(struct inode*);
 void            iunlockput(struct inode*);
-void            iupdate(struct inode*);
 int             namecmp(const char*, const char*);
 struct inode*   namei(char*);
 struct inode*   nameiparent(char*, char*);
-int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
-int             writei(struct inode*, char*, uint, uint);
+
+// fs-specific functions that should only be accessed through inode->i_func
+int             fs_readi(struct inode*, char*, uint, uint);
+int             fs_writei(struct inode*, char*, uint, uint);
+void            fs_ipopulate(struct inode* ip);
+void            fs_iupdate(struct inode*);
+
+
 
 // ide.c
 void            ideinit(void);
@@ -60,32 +77,32 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
-extern int      nfreemem;
-char*           kalloc(int);
-void            kfree(char*, int);
-void            kinit(char*,uint);
-
+char*           kalloc(void);
+void            kfree(char*);
+void            kinit1(void*, void*);
+void            kinit2(void*, void*);
+uint            kmemfreecount();
 // kbd.c
 void            kbdintr(void);
 
 // lapic.c
+void            cmostime(struct rtcdate *r);
 int             cpunum(void);
 extern volatile uint*    lapic;
 void            lapiceoi(void);
-void            lapicinit(int);
-void            lapic_tlbflush(uint);
+void            lapicinit(void);
 void            lapicstartap(uchar, uint);
 void            microdelay(int);
 
+// log.c
+void            initlog(int dev);
+void            log_write(struct buf*);
+void            begin_op();
+void            end_op();
+
 // mp.c
 extern int      ismp;
-int             mpbcpu(void);
 void            mpinit(void);
-void            mpstartthem(void);
-
-// picirq.c
-void            picenable(int);
-void            picinit(void);
 
 // pipe.c
 int             pipealloc(struct file**, struct file**);
@@ -95,7 +112,6 @@ int             pipewrite(struct pipe*, char*, int);
 
 //PAGEBREAK: 16
 // proc.c
-struct proc*    copyproc(struct proc*);
 void            exit(void);
 int             fork(void);
 int             growproc(int);
@@ -103,6 +119,7 @@ int             kill(int);
 void            pinit(void);
 void            procdump(void);
 void            scheduler(void) __attribute__((noreturn));
+void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
 int             wait(void);
@@ -111,16 +128,22 @@ void            yield(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
-void            jstack(uint);
 
 // spinlock.c
 void            acquire(struct spinlock*);
-void            getcallerpcs(void*, uint*);
+void            getcallerpcs(void*, addr_t*);
+void		getstackpcs(addr_t*, addr_t*);
 int             holding(struct spinlock*);
 void            initlock(struct spinlock*, char*);
 void            release(struct spinlock*);
-void            pushcli();
-void            popcli();
+void            pushcli(void);
+void            popcli(void);
+
+// sleeplock.c
+void            acquiresleep(struct sleeplock*);
+void            releasesleep(struct sleeplock*);
+int             holdingsleep(struct sleeplock*);
+void            initsleeplock(struct sleeplock*, char*);
 
 // string.c
 int             memcmp(const void*, const void*, uint);
@@ -132,46 +155,47 @@ int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
 // syscall.c
+void		syscall(void);
+void    syscallinit(void);
 int             argint(int, int*);
 int             argptr(int, char**, int);
 int             argstr(int, char**);
-int             fetchint(struct proc*, uint, int*);
-int             fetchstr(struct proc*, uint, char**);
+int             argaddr(int, addr_t*);
+int             fetchaddr(addr_t, addr_t*);
+int             fetchstr(addr_t, char**);
 void            syscall(void);
-
-// timer.c
-void            timerinit(void);
+int		fetchint(addr_t, int*);
 
 // trap.c
 void            idtinit(void);
-extern int      ticks;
+extern uint     ticks;
 void            tvinit(void);
 extern struct spinlock tickslock;
 
 // uart.c
+void		uartearlyinit(void);
 void            uartinit(void);
 void            uartintr(void);
 void            uartputc(int);
 
 // vm.c
-#define PGROUNDUP(sz)  ((sz+PGSIZE-1) & ~(PGSIZE-1))
-void            pminit(void);
-void            ksegment(void);
+void            seginit(void);
 void            kvmalloc(void);
-void            loadkvm(void);
-void            vminit(void);
-void            jkstack();
-void            printstack(void);
-void            printpgdir(uint*);
-uint*           setupkvm(void);    // XXX need pde_t*
-char*           uva2ka(uint*, char*);
-int             allocuvm(uint*, char*, uint);  // XXX need pde_t*
-void            freevm(uint*);
-void            inituvm(uint*, char*, char*, uint);
-int             loaduvm(uint*, char*, struct inode *ip, uint, uint);
-uint*           copyuvm(uint*,uint);
-void            loadvm(struct proc*);
+pde_t*          setupkvm(void);
+char*           uva2ka(pde_t*, char*);
+int             allocuvm(pde_t*, uint, uint);
+int             deallocuvm(pde_t*, uint64, uint64);
+void            freevm(pde_t*);
+void            inituvm(pde_t*, char*, uint);
+int             loaduvm(pde_t*, char*, struct inode*, uint, uint);
+pde_t*          copyuvm(pde_t*, uint);
+void            switchuvm(struct proc*);
+void            switchkvm(void);
+int             copyout(pde_t*, uint, void*, uint);
+void            clearpteu(pde_t *pgdir, char *uva);
+
+// procfs.c
+void            procfsinit();
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
-

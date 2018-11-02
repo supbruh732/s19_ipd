@@ -1,32 +1,25 @@
-// Multiprocessor bootstrap.
+// Multiprocessor support
 // Search memory for MP description structures.
 // http://developer.intel.com/design/pentium/datashts/24201606.pdf
 
 #include "types.h"
 #include "defs.h"
 #include "param.h"
+#include "memlayout.h"
 #include "mp.h"
 #include "x86.h"
 #include "mmu.h"
 #include "proc.h"
 
 struct cpu cpus[NCPU];
-static struct cpu *bcpu;
-int ismp;
 int ncpu;
 uchar ioapicid;
-
-int
-mpbcpu(void)
-{
-  return bcpu-cpus;
-}
 
 static uchar
 sum(uchar *addr, int len)
 {
   int i, sum;
-  
+
   sum = 0;
   for(i=0; i<len; i++)
     sum += addr[i];
@@ -35,11 +28,10 @@ sum(uchar *addr, int len)
 
 // Look for an MP structure in the len bytes at addr.
 static struct mp*
-mpsearch1(uchar *addr, int len)
+mpsearch1(addr_t a, int len)
 {
-  uchar *e, *p;
-
-  cprintf("mpsearch1 0x%x %d\n", addr, len);
+  uchar *e, *p, *addr;
+  addr = P2V(a);
   e = addr+len;
   for(p = addr; p < e; p += sizeof(struct mp))
     if(memcmp(p, "_MP_", 4) == 0 && sum(p, sizeof(struct mp)) == 0)
@@ -58,17 +50,17 @@ mpsearch(void)
   uchar *bda;
   uint p;
   struct mp *mp;
-
-  bda = (uchar*)0x400;
-  if((p = ((bda[0x0F]<<8)|bda[0x0E]) << 4)){
-    if((mp = mpsearch1((uchar*)p, 1024)))
+  
+  bda = (uchar *) P2V(0x400);
+  if((p = ((bda[0x0F]<<8)| bda[0x0E]) << 4)){
+    if((mp = mpsearch1(p, 1024)))
       return mp;
   } else {
     p = ((bda[0x14]<<8)|bda[0x13])*1024;
-    if((mp = mpsearch1((uchar*)p-1024, 1024)))
+    if((mp = mpsearch1(p-1024, 1024)))
       return mp;
   }
-  return mpsearch1((uchar*)0xF0000, 0x10000);
+  return mpsearch1(0xF0000, 0x10000);
 }
 
 // Search for an MP configuration table.  For now,
@@ -82,9 +74,9 @@ mpconfig(struct mp **pmp)
   struct mpconf *conf;
   struct mp *mp;
 
-  if((mp = mpsearch()) == 0 || mp->physaddr == 0)
+  if((mp = mpsearch()) == 0 || mp->physaddr == 0) 
     return 0;
-  conf = (struct mpconf*)mp->physaddr;
+  conf = (struct mpconf*) P2V((addr_t) mp->physaddr);
   if(memcmp(conf, "PCMP", 4) != 0)
     return 0;
   if(conf->version != 1 && conf->version != 4)
@@ -104,23 +96,19 @@ mpinit(void)
   struct mpproc *proc;
   struct mpioapic *ioapic;
 
-  bcpu = &cpus[0];
-  if((conf = mpconfig(&mp)) == 0)
+  if((conf = mpconfig(&mp)) == 0) {
+    cprintf("No other CPUs found.\n");
     return;
-  ismp = 1;
-  lapic = (uint*)conf->lapicaddr;
+  }
+  lapic = P2V((addr_t)conf->lapicaddr_p);
   for(p=(uchar*)(conf+1), e=(uchar*)conf+conf->length; p<e; ){
     switch(*p){
     case MPPROC:
       proc = (struct mpproc*)p;
-      if(ncpu != proc->apicid) {
-        cprintf("mpinit: ncpu=%d apicpid=%d", ncpu, proc->apicid);
-        panic("mpinit");
+      if(ncpu < NCPU) {
+        cpus[ncpu].apicid = proc->apicid;  // apicid may differ from ncpu
+        ncpu++;
       }
-      if(proc->flags & MPBOOT)
-        bcpu = &cpus[ncpu];
-      cpus[ncpu].id = ncpu;
-      ncpu++;
       p += sizeof(struct mpproc);
       continue;
     case MPIOAPIC:
@@ -134,10 +122,11 @@ mpinit(void)
       p += 8;
       continue;
     default:
-      cprintf("mpinit: unknown config type %x\n", *p);
-      panic("mpinit");
+      panic("Major problem parsing mp config.");
+      break;
     }
   }
+  cprintf("Seems we are SMP, ncpu = %d\n",ncpu);
   if(mp->imcrp){
     // Bochs doesn't support IMCR, so this doesn't run on Bochs.
     // But it would on real hardware.

@@ -2,13 +2,17 @@
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
 
+#include <stdarg.h>
+
 #include "types.h"
 #include "defs.h"
 #include "param.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "fs.h"
 #include "file.h"
+#include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
 #include "x86.h"
@@ -18,49 +22,61 @@ static void consputc(int);
 static int panicked = 0;
 
 static struct {
-	struct spinlock lock;
-	int locking;
+  struct spinlock lock;
+  int locking;
 } cons;
 
-static void
-printint(int xx, int base, int sgn)
-{
-  static char digits[] = "0123456789abcdef";
-  char buf[16];
-  int i = 0, neg = 0;
-  uint x;
+static char digits[] = "0123456789abcdef";
 
-  if(sgn && xx < 0){
-    neg = 1;
+static void
+printptr(addr_t x) {
+  int i;
+  for (i = 0; i < (sizeof(addr_t) * 2); i++, x <<= 4)
+    consputc(digits[x >> (sizeof(addr_t) * 8 - 4)]);
+}
+
+static void
+printint(int xx, int base, int sign)
+{
+  char buf[32];
+  int i;
+  uint64 x;
+
+  if(sign && (sign = xx < 0))
     x = -xx;
-  } else
+  else
     x = xx;
 
+  i = 0;
   do{
     buf[i++] = digits[x % base];
   }while((x /= base) != 0);
-  if(neg)
+
+  if(sign)
     buf[i++] = '-';
 
   while(--i >= 0)
     consputc(buf[i]);
 }
-
 //PAGEBREAK: 50
+
 // Print to the console. only understands %d, %x, %p, %s.
 void
 cprintf(char *fmt, ...)
 {
-  int i, c, state, locking;
-  uint *argp;
+  va_list ap;
+  int i, c, locking;
   char *s;
+
+  va_start(ap, fmt);
 
   locking = cons.locking;
   if(locking)
     acquire(&cons.lock);
 
-  argp = (uint*)(void*)(&fmt + 1);
-  state = 0;
+  if (fmt == 0)
+    panic("null fmt");
+
   for(i = 0; (c = fmt[i] & 0xff) != 0; i++){
     if(c != '%'){
       consputc(c);
@@ -71,14 +87,16 @@ cprintf(char *fmt, ...)
       break;
     switch(c){
     case 'd':
-      printint(*argp++, 10, 1);
+      printint(va_arg(ap, int), 10, 1);
       break;
     case 'x':
+      printint(va_arg(ap, int), 16, 0);
+      break;
     case 'p':
-      printint(*argp++, 16, 0);
+      printptr(va_arg(ap, addr_t));
       break;
     case 's':
-      if((s = (char*)*argp++) == 0)
+      if((s = va_arg(ap, char*)) == 0)
         s = "(null)";
       for(; *s; s++)
         consputc(*s);
@@ -102,7 +120,7 @@ void
 panic(char *s)
 {
   int i;
-  uint pcs[10];
+  addr_t pcs[10];
   
   cli();
   cons.locking = 0;
@@ -120,7 +138,7 @@ panic(char *s)
 //PAGEBREAK: 50
 #define BACKSPACE 0x100
 #define CRTPORT 0x3d4
-static ushort *crt = (ushort*)0xb8000;  // CGA memory
+static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
 
 static void
 cgaputc(int c)
@@ -136,8 +154,7 @@ cgaputc(int c)
   if(c == '\n')
     pos += 80 - pos%80;
   else if(c == BACKSPACE){
-    if(pos > 0)
-      crt[--pos] = ' ' | 0x0700;
+    if(pos > 0) --pos;
   } else
     crt[pos++] = (c&0xff) | 0x0700;  // black on white
   
@@ -163,16 +180,13 @@ consputc(int c)
       ;
   }
 
-  if (c == BACKSPACE) {
-    uartputc('\b');
-    uartputc(' ');
-    uartputc('\b');
+  if(c == BACKSPACE){
+    uartputc('\b'); uartputc(' '); uartputc('\b');
   } else
     uartputc(c);
   cgaputc(c);
 }
 
-//PAGEBREAK: 50
 #define INPUT_BUF 128
 struct {
   struct spinlock lock;
@@ -192,6 +206,9 @@ consoleintr(int (*getc)(void))
   acquire(&input.lock);
   while((c = getc()) >= 0){
     switch(c){
+    case C('Z'): // reboot
+      lidt(0,0);
+      break;
     case C('P'):  // Process listing.
       procdump();
       break;
@@ -202,8 +219,7 @@ consoleintr(int (*getc)(void))
         consputc(BACKSPACE);
       }
       break;
-    case C('H'):  // Backspace
-    case '\x7f':
+    case C('H'): case '\x7f':  // Backspace
       if(input.e != input.w){
         input.e--;
         consputc(BACKSPACE);
@@ -211,9 +227,7 @@ consoleintr(int (*getc)(void))
       break;
     default:
       if(c != 0 && input.e-input.r < INPUT_BUF){
-        // The serial port produces 0x13, not 0x10
-        if(c == '\r')
-          c = '\n';
+        c = (c == '\r') ? '\n' : c;
         input.buf[input.e++ % INPUT_BUF] = c;
         consputc(c);
         if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
@@ -290,7 +304,6 @@ consoleinit(void)
   devsw[CONSOLE].read = consoleread;
   cons.locking = 1;
 
-  picenable(IRQ_KBD);
   ioapicenable(IRQ_KBD, 0);
 }
 

@@ -2,47 +2,68 @@
 // 
 // Part of the boot sector, along with bootasm.S, which calls bootmain().
 // bootasm.S has put the processor into protected 32-bit mode.
-// bootmain() loads an ELF kernel image from the disk starting at
+// bootmain() loads a multiboot kernel image from the disk starting at
 // sector 1 and then jumps to the kernel entry routine.
 
 #include "types.h"
-#include "elf.h"
 #include "x86.h"
+#include "memlayout.h"
 
 #define SECTSIZE  512
+
+struct mbheader {
+  uint64 magic;
+  uint64 flags;
+  uint64 checksum;
+  uint64 header_addr;
+  uint64 load_addr;
+  uint64 load_end_addr;
+  uint64 bss_end_addr;
+  uint64 entry_addr;
+};
 
 void readseg(uchar*, uint, uint);
 
 void
 bootmain(void)
 {
-  struct elfhdr *elf;
-  struct proghdr *ph, *eph;
+  struct mbheader *hdr;
   void (*entry)(void);
-  uchar* va;
+  uint32 *x;
+  uint n;
 
-  elf = (struct elfhdr*)0x10000;  // scratch space
+  x = (uint32*) 0x10000; // scratch space
 
-  // Read 1st page off disk
-  readseg((uchar*)elf, 4096, 0);
+  // multiboot header must be in the first 8192 bytes
+  readseg((uchar*)x, 8192, 0);
 
-  // Is this an ELF executable?
-  if(elf->magic != ELF_MAGIC)
-    return;  // let bootasm.S handle error
+  for (n = 0; n < 8192/4; n++)
+    if (x[n] == 0x1BADB002)
+      if ((x[n] + x[n+1] + x[n+2]) == 0)
+        goto found_it;
 
-  // Load each program segment (ignores ph flags).
-  ph = (struct proghdr*)((uchar*)elf + elf->phoff);
-  eph = ph + elf->phnum;
-  for(; ph < eph; ph++) {
-    va = (uchar*)(ph->va & 0xFFFFFF);
-    readseg(va, ph->filesz, ph->offset);
-    if(ph->memsz > ph->filesz)
-      stosb(va + ph->filesz, 0, ph->memsz - ph->filesz);
-  }
+  // failure
+  return;
 
-  // Call the entry point from the ELF header.
-  // Does not return!
-  entry = (void(*)(void))(elf->entry & 0xFFFFFF);
+found_it:
+  hdr = (struct mbheader *) (x + n);
+
+  if (!(hdr->flags & 0x10000))
+    return; // does not have load_* fields, cannot proceed
+  if (hdr->load_addr > hdr->header_addr)
+    return; // invalid;
+  if (hdr->load_end_addr < hdr->load_addr)
+    return; // no idea how much to load
+
+  readseg((uchar*) hdr->load_addr,
+    (hdr->load_end_addr - hdr->load_addr),
+    (n * 4) - (hdr->header_addr - hdr->load_addr));
+
+  if (hdr->bss_end_addr > hdr->load_end_addr)
+    stosb((void*) hdr->load_end_addr, 0,
+      hdr->bss_end_addr - hdr->load_end_addr);
+
+  entry = (void(*)(void))(hdr->entry_addr);
   entry();
 }
 
@@ -72,17 +93,17 @@ readsect(void *dst, uint offset)
   insl(0x1F0, dst, SECTSIZE/4);
 }
 
-// Read 'count' bytes at 'offset' from kernel into virtual address 'va'.
+// Read 'count' bytes at 'offset' from kernel into physical address 'pa'.
 // Might copy more than asked.
 void
-readseg(uchar* va, uint count, uint offset)
+readseg(uchar* pa, uint count, uint offset)
 {
-  uchar* eva;
+  uchar* epa;
 
-  eva = va + count;
+  epa = pa + count;
 
   // Round down to sector boundary.
-  va -= offset % SECTSIZE;
+  pa -= offset % SECTSIZE;
 
   // Translate from bytes to sectors; kernel starts at sector 1.
   offset = (offset / SECTSIZE) + 1;
@@ -90,6 +111,6 @@ readseg(uchar* va, uint count, uint offset)
   // If this is too slow, we could read lots of sectors at a time.
   // We'd write more to memory than asked, but it doesn't matter --
   // we load in increasing order.
-  for(; va < eva; va += SECTSIZE, offset++)
-    readsect(va, offset);
+  for(; pa < epa; pa += SECTSIZE, offset++)
+    readsect(pa, offset);
 }

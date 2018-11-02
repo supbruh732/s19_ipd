@@ -4,8 +4,8 @@
 #define SYSCALL(name) \
   .globl name; \
   name: \
-    movl $SYS_ ## name, %eax; \
-    int $T_SYSCALL; \
+    mov $SYS_ ## name, %rax; \
+    syscall		  ;\
     ret
 
 SYSCALL(fork)
@@ -28,3 +28,5 @@ SYSCALL(dup)
 SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
+SYSCALL(uptime)
+SYSCALL(mount)

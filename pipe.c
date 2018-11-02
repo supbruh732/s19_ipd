@@ -4,8 +4,9 @@
 #include "mmu.h"
 #include "proc.h"
 #include "fs.h"
-#include "file.h"
 #include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
 
 #define PIPESIZE 512
 
@@ -27,7 +28,7 @@ pipealloc(struct file **f0, struct file **f1)
   *f0 = *f1 = 0;
   if((*f0 = filealloc()) == 0 || (*f1 = filealloc()) == 0)
     goto bad;
-  if((p = (struct pipe*)kalloc(PAGE)) == 0)
+  if((p = (struct pipe*)kalloc()) == 0)
     goto bad;
   p->readopen = 1;
   p->writeopen = 1;
@@ -47,7 +48,7 @@ pipealloc(struct file **f0, struct file **f1)
 //PAGEBREAK: 20
  bad:
   if(p)
-    kfree((char*)p, PAGE);
+    kfree((char*)p);
   if(*f0)
     fileclose(*f0);
   if(*f1)
@@ -66,9 +67,9 @@ pipeclose(struct pipe *p, int writable)
     p->readopen = 0;
     wakeup(&p->nwrite);
   }
-  if(p->readopen == 0 && p->writeopen == 0) {
+  if(p->readopen == 0 && p->writeopen == 0){
     release(&p->lock);
-    kfree((char*)p, PAGE);
+    kfree((char*)p);
   } else
     release(&p->lock);
 }
@@ -81,7 +82,7 @@ pipewrite(struct pipe *p, char *addr, int n)
 
   acquire(&p->lock);
   for(i = 0; i < n; i++){
-    while(p->nwrite == p->nread + PIPESIZE) {  //DOC: pipewrite-full
+    while(p->nwrite == p->nread + PIPESIZE){  //DOC: pipewrite-full
       if(p->readopen == 0 || proc->killed){
         release(&p->lock);
         return -1;
