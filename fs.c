@@ -553,7 +553,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
       else
         return iget(dp->dev, inum, dp);
     }
-    off++;
+    off+= sizeof(de);
   }
 
   return 0;
