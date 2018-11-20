@@ -126,6 +126,9 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
+// procfs
+//pte_t           walkpg(pde_t*, const void*, int);
+
 // swtch.S
 void            swtch(struct context**, struct context*);
 

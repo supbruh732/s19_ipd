@@ -225,6 +225,11 @@ walkpgdir(pde_t *pml4, const void *va, int alloc)
   return &pgtab[PTX(va)];
 }
 
+pte_t 
+walkpg(pde_t *pml4, const void *va, int alloc) {
+  return walkpgdir(pml4, va, alloc);
+}
+
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
