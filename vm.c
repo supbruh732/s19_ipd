@@ -6,9 +6,6 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
-#include "spinlock.h"
-#include "sleeplock.h"
-#include "file.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
@@ -90,6 +87,161 @@ seginit(void)
   ltr(SEG_TSS << 3);
 };
 
+// Return the address of the PTE in page table pgdir
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page table pages.
+//
+// In 64-bit mode, the page table has four levels: PML4, PDPT, PD and PT
+// For each level, we dereference the correct entry, or allocate and
+// initialize entry if the PTE_P bit is not set
+
+static pte_t *
+walkpgdir(pde_t *pml4, const void *va, int alloc)
+{
+  pml4e_t *pml4e;
+  pdpe_t *pdp;
+  pdpe_t *pdpe;
+  pde_t *pde;
+  pde_t *pd;
+  pte_t *pgtab;
+  
+
+  // from the PML4, find or allocate the appropriate PDP table
+  pml4e = &pml4[PMX(va)];
+  if(*pml4e & PTE_P)
+    pdp = (pdpe_t*)P2V(PTE_ADDR(*pml4e));  
+  else {
+    if(!alloc || (pdp = (pdpe_t*)kalloc()) == 0)
+      return 0;
+    memset(pdp, 0, PGSIZE);
+    *pml4e = V2P(pdp) | PTE_P | PTE_W | PTE_U;
+  }
+
+  //from the PDP, find or allocate the appropriate PD (page directory)
+  pdpe = &pdp[PDPX(va)];  
+  if(*pdpe & PTE_P) 
+    pd = (pde_t*)P2V(PTE_ADDR(*pdpe));
+  else {
+    if(!alloc || (pd = (pde_t*)kalloc()) == 0)//allocate page table
+      return 0;
+    memset(pd, 0, PGSIZE);
+    *pdpe = V2P(pd) | PTE_P | PTE_W | PTE_U;
+  }
+
+  // from the PD, find or allocate the appropriate page table 
+  pde = &pd[PDX(va)]; 
+  if(*pde & PTE_P)
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+  else {
+    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)//allocate page table
+      return 0;
+    memset(pgtab, 0, PGSIZE);
+    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
+  }
+  
+  return &pgtab[PTX(va)];
+}
+
+
+/* deduplicate pages between process virtual address vstart and virtual address vend */
+void
+dedup(void *vstart, void *vend) {
+  //cprintf("didn't dedup anything\n");
+
+  addr_t start = 0;
+  addr_t end = PGROUNDUP((addr_t)vend);
+
+  //end = PGSIZE + PGSIZE + PGSIZE + PGSIZE;
+
+  int pos = 0;
+  int cmp = 0;
+  pde_t *pgdir = proc->pgdir;       //page table of the process
+  pte_t *first;
+  pte_t *dupl;
+
+  int count = 0;
+
+  for(addr_t i = start; i + PGSIZE <= end; i+=PGSIZE) {
+    count++;
+    first = walkpgdir(pgdir, i, 0);
+
+    for(addr_t j = i+PGSIZE; j+PGSIZE <= end; j+=PGSIZE) {
+      cmp = memcmp(i, j, PGSIZE);
+      if(cmp == 0){
+        pos++;
+
+        dupl = walkpgdir(pgdir, j, 0);
+
+        kretain((char *)(P2V(PTE_ADDR(*first))));
+
+        krelease((char *)(P2V(PTE_ADDR(*dupl))));
+        
+        pte_t *addr = (P2V(PTE_ADDR(*first)));
+        pte_t *flag = P2V(PTE_FLAGS(*first));
+
+        *dupl = V2P(addr) | PTE_P | PTE_U;
+
+      }
+    }
+
+    if(pos > 0){
+      //cprintf("%d %d\n", count, pos);
+      int ref = krefcount((char *)(P2V(PTE_ADDR(*first))));
+      //cprintf("\nref: %d\n\n", ref);
+      break;
+    }
+  }
+  return 0;
+}
+
+
+/* maybe perform copy-on-write on the page that contains virtual address v. 
+   returns 1 if copy-on-write was performed, 0 otherwise. */
+int
+copyonwrite(char* v)
+{
+  //cprintf("didn't copyonwrite anything\n");
+
+  pde_t *pgdir = proc->pgdir;
+  addr_t ptr = PGROUNDDOWN((addr_t)v);
+
+  pte_t *pte = walkpgdir(pgdir, ptr, 1);
+
+  if(*pte == 0){
+    cprintf("Did Nothing\n");
+    return 0;
+  }
+
+  kretain((char *)(P2V(PTE_ADDR(*pte))));
+
+  pte_t *addr = (P2V(PTE_ADDR(*pte)));
+  pte_t *flag = P2V(PTE_FLAGS(*pte));
+
+  *pte = V2P(addr) | PTE_P | PTE_W | PTE_U;
+
+  return 1;
+
+  /*pte_t *pte = walkpgdir(pgdir, ptr, 0);
+
+  cprintf("Outside\n");
+
+  if(*pte & PTE_COW == 0){
+    //do copy on write
+
+    cprintf("Got here\n");
+    
+    pte_t *page;
+    if(page = walkpgdir(pgdir, (addr_t)v, 1) == 0){
+      cprintf("This is wrong\n");
+    }
+
+  } else {
+    //return (maybe???)
+  }*/
+
+  return 0;
+}
+
 
 // There is one page table per process, plus one that's used when
 // a CPU is not running any process (kpgdir). The kernel uses the
@@ -170,66 +322,6 @@ switchuvm(struct proc *p)
 
 }
 
-// Return the address of the PTE in page table pgdir
-// that corresponds to virtual address va.  If alloc!=0,
-// create any required page table pages.
-//
-// In 64-bit mode, the page table has four levels: PML4, PDPT, PD and PT
-// For each level, we dereference the correct entry, or allocate and
-// initialize entry if the PTE_P bit is not set
-
-static pte_t *
-walkpgdir(pde_t *pml4, const void *va, int alloc)
-{
-  pml4e_t *pml4e;
-  pdpe_t *pdp;
-  pdpe_t *pdpe;
-  pde_t *pde;
-  pde_t *pd;
-  pte_t *pgtab;
-  
-
-  // from the PML4, find or allocate the appropriate PDP table
-  pml4e = &pml4[PMX(va)];
-  if(*pml4e & PTE_P)
-    pdp = (pdpe_t*)P2V(PTE_ADDR(*pml4e));  
-  else {
-    if(!alloc || (pdp = (pdpe_t*)kalloc()) == 0)
-      return 0;
-    memset(pdp, 0, PGSIZE);
-    *pml4e = V2P(pdp) | PTE_P | PTE_W | PTE_U;
-  }
-
-  //from the PDP, find or allocate the appropriate PD (page directory)
-  pdpe = &pdp[PDPX(va)];  
-  if(*pdpe & PTE_P) 
-    pd = (pde_t*)P2V(PTE_ADDR(*pdpe));
-  else {
-    if(!alloc || (pd = (pde_t*)kalloc()) == 0)//allocate page table
-      return 0;
-    memset(pd, 0, PGSIZE);
-    *pdpe = V2P(pd) | PTE_P | PTE_W | PTE_U;
-  }
-
-  // from the PD, find or allocate the appropriate page table 
-  pde = &pd[PDX(va)]; 
-  if(*pde & PTE_P)
-    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
-  else {
-    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)//allocate page table
-      return 0;
-    memset(pgtab, 0, PGSIZE);
-    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
-  }
-  
-  return &pgtab[PTX(va)];
-}
-
-pte_t 
-walkpg(pde_t *pml4, const void *va, int alloc) {
-  return walkpgdir(pml4, va, alloc);
-}
-
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
@@ -291,7 +383,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
       n = sz - i;
     else
       n = PGSIZE;
-    if(ip->i_func->readi(ip, P2V(pa), offset+i, n) != n)
+    if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
   }
   return 0;
@@ -322,7 +414,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
-      kfree(mem);
+      krelease(mem);
       return 0;
     }
   }
@@ -348,9 +440,10 @@ deallocuvm(pde_t *pgdir, uint64 oldsz, uint64 newsz)
     if(pte && (*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
       if(pa == 0)
-        panic("kfree");
+        panic("krelease");
       char *v = P2V(pa);
-      kfree(v);
+      krelease(v);
+
       *pte = 0;
     }
   }
@@ -388,23 +481,24 @@ freevm(pde_t *pml4)
                 if(pt[l] & PTE_P) {
                   char * v = P2V(PTE_ADDR(pt[l]));
               
-                  kfree((char*)v);
+                  krelease((char*)v);
                 }
               }              
               //freeing every page table
-              kfree((char*)pt);
+              krelease((char*)pt);
             }
           }          
           // freeing every page directory
-          kfree((char*)pd);
+          krelease((char*)pd);
         }
       }
       // freeing every page directory pointer table
-      kfree((char*)pdp);
+      krelease((char*)pdp);
     }
   }
   // freeing the pml4
-  kfree((char*)pml4);
+  krelease((char*)pml4);
+
 }
 
 // Clear PTE_U on a page. Used to create an inaccessible

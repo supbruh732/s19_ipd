@@ -89,6 +89,10 @@ trap(struct trapframe *tf)
             cpunum(), tf->cs, tf->rip);
     lapiceoi();
     break;
+  case T_PGFLT:
+    // handle writes to deduped pages
+    if(copyonwrite((char*)rcr2()))
+      break;    
 
   //PAGEBREAK: 13
   default:

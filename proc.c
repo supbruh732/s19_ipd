@@ -87,8 +87,7 @@ userinit(void)
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
   p = allocproc();
-  p->parent = p; // ulgy fix for uninitized parent pointer
-
+  
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
     panic("userinit: out of memory?");
@@ -100,13 +99,11 @@ userinit(void)
   p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
   p->tf->ss = (SEG_UDATA << 3) | DPL_USER;
 
-//  p->tf->eflags = FL_IF;   // with SYSRET, EFLAGS is in R11
-  p->tf->r11 = FL_IF;
+  p->tf->rflags = FL_IF;
   p->tf->rsp = PGSIZE;
-
-//  p->tf->rip = 0;   // with SYSRET, RIP is in RCX
+  p->tf->rip = 0;  // beginning of initcode.S
   p->tf->rcx = 0;
-
+  
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
@@ -158,7 +155,7 @@ fork(void)
 
   // Copy process state from p.
   if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
-    kfree(np->kstack);
+    krelease(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
     return -1;
@@ -254,7 +251,7 @@ wait(void)
       if(p->state == ZOMBIE){
         // Found one.
         pid = p->pid;
-        kfree(p->kstack);
+        krelease(p->kstack);
         p->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
@@ -315,6 +312,7 @@ scheduler(void)
       proc = 0;
     }
     release(&ptable.lock);
+
   }
 }
 

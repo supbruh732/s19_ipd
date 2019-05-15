@@ -51,15 +51,12 @@ ls(char *path)
       printf(1, "ls: path too long\n");
       break;
     }
-
     strcpy(buf, path);
     p = buf+strlen(buf);
     *p++ = '/';
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
       if(de.inum == 0)
         continue;
-
-      //printf(1, "here\n");
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){

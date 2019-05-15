@@ -55,9 +55,11 @@ struct context {
 
 };
 
+enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+
 // Per-process state
 struct proc {
-  addr_t sz;                     // Size of process memory (bytes)
+  addr_t sz;                   // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
@@ -77,5 +79,3 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
-
-

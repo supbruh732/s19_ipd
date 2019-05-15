@@ -133,9 +133,11 @@ extern addr_t sys_unlink(void);
 extern addr_t sys_wait(void);
 extern addr_t sys_write(void);
 extern addr_t sys_uptime(void);
-extern addr_t sys_mount(void);
+extern addr_t sys_dedup(void);
+extern addr_t sys_freepages(void);
 
 static addr_t (*syscalls[])(void) = {
+
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
 [SYS_wait]    sys_wait,
@@ -157,7 +159,8 @@ static addr_t (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_mount]   sys_mount,
+[SYS_dedup]   sys_dedup,
+[SYS_freepages] sys_freepages,
 };
 
 void

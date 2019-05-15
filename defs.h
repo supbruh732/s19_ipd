@@ -9,8 +9,6 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
-struct spinlock;
-
 
 //entry.S
 void wrmsr(uint msr, uint64 val);
@@ -45,26 +43,20 @@ int             filewrite(struct file*, char*, int n);
 void            readsb(int dev, struct superblock *sb);
 int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
-struct inode*   ialloc(uint, short, struct inode*);
+struct inode*   ialloc(uint, short);
 struct inode*   idup(struct inode*);
 void            iinit(int dev);
 void            ilock(struct inode*);
 void            iput(struct inode*);
-void            ilock(struct inode*);
 void            iunlock(struct inode*);
 void            iunlockput(struct inode*);
+void            iupdate(struct inode*);
 int             namecmp(const char*, const char*);
 struct inode*   namei(char*);
 struct inode*   nameiparent(char*, char*);
+int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
-
-// fs-specific functions that should only be accessed through inode->i_func
-int             fs_readi(struct inode*, char*, uint, uint);
-int             fs_writei(struct inode*, char*, uint, uint);
-void            fs_ipopulate(struct inode* ip);
-void            fs_iupdate(struct inode*);
-
-
+int             writei(struct inode*, char*, uint, uint);
 
 // ide.c
 void            ideinit(void);
@@ -79,9 +71,15 @@ void            ioapicinit(void);
 // kalloc.c
 char*           kalloc(void);
 void            kfree(char*);
+void            krelease(char*);
+void            kretain(char*);
+int             krefcount(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
-uint            kmemfreecount();
+int             kfreepagecount(void);
+void            hashFunction(char*);
+int             getCheckSum(char*);
+
 // kbd.c
 void            kbdintr(void);
 
@@ -125,9 +123,6 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
-
-// procfs
-//pte_t           walkpg(pde_t*, const void*, int);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -196,9 +191,8 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
-
-// procfs.c
-void            procfsinit();
+void            dedup(void *vstart, void *vend);
+int             copyonwrite(char *v);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

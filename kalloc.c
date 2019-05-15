@@ -12,6 +12,12 @@
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
 
+struct frameinfo {
+  int refs;
+  addr_t checksum; // this is not guaranteed to be correct, should be refreshed before use 
+};
+struct frameinfo frameinfo [PHYSTOP/PGSIZE];
+
 struct run {
   struct run *next;
 };
@@ -31,7 +37,9 @@ void
 kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
+  memset(frameinfo,0,sizeof(frameinfo));
   kmem.use_lock = 0;
+  kmem.freelist = 0;
   freerange(vstart, vend);
 }
 
@@ -75,6 +83,43 @@ kfree(char *v)
     release(&kmem.lock);
 }
 
+// release frame with kernel virtual address v
+void
+krelease(char* v) {
+  //cprintf("before conversion\n");
+  addr_t frame = V2P(v);
+  //addr_t frame = (addr_t)v;
+  frameinfo[PGINDEX(frame)].refs--;  
+  if(frameinfo[PGINDEX(frame)].refs == 0) {
+    kfree(P2V(frame));
+  }
+}
+
+
+void
+kretain(char *v) {
+  addr_t frame = V2P(v);
+  frameinfo[PGINDEX(frame)].refs++;  
+}
+
+int
+krefcount(char *v) {
+  return frameinfo[PGINDEX(V2P(v))].refs;
+}
+
+int kfreepagecount() {
+  int i=0;
+  
+  acquire(&kmem.lock);
+  struct run *list = kmem.freelist;
+  while(list) {
+    i++;
+    list=list->next;
+  }
+  release(&kmem.lock);
+  return i;
+}
+
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -90,21 +135,8 @@ kalloc(void)
     kmem.freelist = r->next;
   if(kmem.use_lock)
     release(&kmem.lock);
+
+  frameinfo[PGINDEX(V2P(r))].refs=1;
   return (char*)r;
 }
 
-uint
-kmemfreecount()
-{
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
-  struct run * r = kmem.freelist;
-  uint cnt = 0;
-  while (r) {
-    cnt++;
-    r = r->next;
-  }
-  if (kmem.use_lock)
-    release(&kmem.lock);
-  return cnt;
-}
