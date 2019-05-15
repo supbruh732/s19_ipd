@@ -28,8 +28,8 @@ syscallinit(void)
   // the MSR/SYSRET wants the segment for 32-bit user data
   // next up is 64-bit user data, then code
   wrmsr( MSR_STAR, ((((uint64)SEG_UCODE32 << 3) << 48) | ((uint64)KERNEL_CS << 32)));
-  wrmsr( MSR_LSTAR, (addr_t)syscall_entry );
-  wrmsr( MSR_CSTAR, (addr_t)ignore_sysret );
+  wrmsr( MSR_LSTAR, syscall_entry );
+  wrmsr( MSR_CSTAR, ignore_sysret );
   
   
   wrmsr( MSR_SFMASK, FL_TF|FL_DF|FL_IF|FL_IOPL_3|FL_AC|FL_NT);
@@ -87,6 +87,87 @@ seginit(void)
   ltr(SEG_TSS << 3);
 };
 
+
+// There is one page table per process, plus one that's used when
+// a CPU is not running any process (kpgdir). The kernel uses the
+// current process's page table during system calls and interrupts;
+// page protection bits prevent user code from using the kernel's
+// mappings.
+//
+// setupkvm() and exec() set up every page table like this:
+//
+//   0..KERNBASE: user memory (text+data+stack+heap), mapped to
+//                phys memory allocated by the kernel
+//   KERNBASE..KERNBASE+EXTMEM: mapped to 0..EXTMEM (for I/O space)
+//   KERNBASE+EXTMEM..data: mapped to EXTMEM..V2P(data)
+//                for the kernel's instructions and r/o data
+//   data..KERNBASE+PHYSTOP: mapped to V2P(data)..PHYSTOP,
+//                                  rw data + free physical memory
+//   0xfe000000..0: mapped direct (devices such as ioapic)
+//
+// The kernel allocates physical memory for its heap and for user memory
+// between V2P(end) and the end of physical memory (PHYSTOP)
+// (directly addressable from end..P2V(PHYSTOP)).
+
+
+pde_t*
+setupkvm(void)
+{
+  pde_t *pml4 = (pde_t*) kalloc();
+  memset(pml4, 0, PGSIZE);
+  pml4[256] = v2p(kpdpt) | PTE_P | PTE_W;
+  return pml4;
+};
+
+// Allocate one page table for the machine for the kernel address
+// space for scheduler processes.
+//
+// linear map the first 4GB of physical memory starting
+// at 0xFFFF800000000000
+void
+kvmalloc(void)
+{
+  int n;
+  kpml4 = (pde_t*) kalloc();
+  memset(kpml4, 0, PGSIZE);
+
+  // the kernel memory region starts at KERNBASE and up
+  // allocate one PDPT at the bottom of that range.
+  kpdpt = (pde_t*) kalloc();
+  memset(kpdpt, 0, PGSIZE);
+  kpml4[PMX(KERNBASE)] = v2p(kpdpt) | PTE_P | PTE_W;
+
+  // direct map first GB of physical addresses to KERNBASE
+  kpdpt[0] = 0 | PTE_PS | PTE_P | PTE_W;
+
+  // direct map 4th GB of physical addresses to KERNBASE+3GB
+  // this is a very lazy way to map IO memory (for lapic and ioapic)
+  // PTE_PWT and PTE_PCD for memory mapped I/O correctness. 
+  kpdpt[3] = 0xC0000000 | PTE_PS | PTE_P | PTE_W | PTE_PWT | PTE_PCD;  
+
+  switchkvm();
+}
+
+void
+switchkvm(void)
+{
+  lcr3(v2p(kpml4));
+}
+
+void
+switchuvm(struct proc *p)
+{
+  uint *tss;
+  pushcli();
+  if(p->pgdir == 0)
+    panic("switchuvm: no pgdir");
+  tss = (uint*) (((char*) cpu->local) + 1024);
+  tss_set_rsp(tss, 0, (addr_t)proc->kstack + KSTACKSIZE);
+  lcr3(v2p(p->pgdir));
+  popcli();
+
+}
+
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
@@ -140,186 +221,6 @@ walkpgdir(pde_t *pml4, const void *va, int alloc)
   }
   
   return &pgtab[PTX(va)];
-}
-
-
-/* deduplicate pages between process virtual address vstart and virtual address vend */
-void
-dedup(void *vstart, void *vend) {
-  //cprintf("didn't dedup anything\n");
-
-  addr_t start = 0;
-  addr_t end = PGROUNDUP((addr_t)vend);
-
-  //end = PGSIZE + PGSIZE + PGSIZE + PGSIZE;
-
-  int pos = 0;
-  int cmp = 0;
-  pde_t *pgdir = proc->pgdir;       //page table of the process
-  pte_t *first;
-  pte_t *dupl;
-
-  int count = 0;
-
-  for(addr_t i = start; i + PGSIZE <= end; i+=PGSIZE) {
-    count++;
-    first = walkpgdir(pgdir, i, 0);
-
-    for(addr_t j = i+PGSIZE; j+PGSIZE <= end; j+=PGSIZE) {
-      cmp = memcmp(i, j, PGSIZE);
-      if(cmp == 0){
-        pos++;
-
-        dupl = walkpgdir(pgdir, j, 0);
-
-        kretain((char *)(P2V(PTE_ADDR(*first))));
-
-        krelease((char *)(P2V(PTE_ADDR(*dupl))));
-        
-        pte_t *addr = (P2V(PTE_ADDR(*first)));
-        pte_t *flag = P2V(PTE_FLAGS(*first));
-
-        *dupl = V2P(addr) | PTE_P | PTE_U;
-
-      }
-    }
-
-    if(pos > 0){
-      //cprintf("%d %d\n", count, pos);
-      int ref = krefcount((char *)(P2V(PTE_ADDR(*first))));
-      //cprintf("\nref: %d\n\n", ref);
-      break;
-    }
-  }
-  return 0;
-}
-
-
-/* maybe perform copy-on-write on the page that contains virtual address v. 
-   returns 1 if copy-on-write was performed, 0 otherwise. */
-int
-copyonwrite(char* v)
-{
-  //cprintf("didn't copyonwrite anything\n");
-
-  pde_t *pgdir = proc->pgdir;
-  addr_t ptr = PGROUNDDOWN((addr_t)v);
-
-  pte_t *pte = walkpgdir(pgdir, ptr, 1);
-
-  if(*pte == 0){
-    cprintf("Did Nothing\n");
-    return 0;
-  }
-
-  kretain((char *)(P2V(PTE_ADDR(*pte))));
-
-  pte_t *addr = (P2V(PTE_ADDR(*pte)));
-  pte_t *flag = P2V(PTE_FLAGS(*pte));
-
-  *pte = V2P(addr) | PTE_P | PTE_W | PTE_U;
-
-  return 1;
-
-  /*pte_t *pte = walkpgdir(pgdir, ptr, 0);
-
-  cprintf("Outside\n");
-
-  if(*pte & PTE_COW == 0){
-    //do copy on write
-
-    cprintf("Got here\n");
-    
-    pte_t *page;
-    if(page = walkpgdir(pgdir, (addr_t)v, 1) == 0){
-      cprintf("This is wrong\n");
-    }
-
-  } else {
-    //return (maybe???)
-  }*/
-
-  return 0;
-}
-
-
-// There is one page table per process, plus one that's used when
-// a CPU is not running any process (kpgdir). The kernel uses the
-// current process's page table during system calls and interrupts;
-// page protection bits prevent user code from using the kernel's
-// mappings.
-//
-// setupkvm() and exec() set up every page table like this:
-//
-//   0..KERNBASE: user memory (text+data+stack+heap), mapped to
-//                phys memory allocated by the kernel
-//   KERNBASE..KERNBASE+EXTMEM: mapped to 0..EXTMEM (for I/O space)
-//   KERNBASE+EXTMEM..data: mapped to EXTMEM..V2P(data)
-//                for the kernel's instructions and r/o data
-//   data..KERNBASE+PHYSTOP: mapped to V2P(data)..PHYSTOP,
-//                                  rw data + free physical memory
-//   0xfe000000..0: mapped direct (devices such as ioapic)
-//
-// The kernel allocates physical memory for its heap and for user memory
-// between V2P(end) and the end of physical memory (PHYSTOP)
-// (directly addressable from end..P2V(PHYSTOP)).
-
-
-pde_t*
-setupkvm(void)
-{
-  pde_t *pml4 = (pde_t*) kalloc();
-  memset(pml4, 0, PGSIZE);
-  pml4[256] = v2p(kpdpt) | PTE_P | PTE_W;
-  return pml4;
-};
-
-// Allocate one page table for the machine for the kernel address
-// space for scheduler processes.
-//
-// linear map the first 4GB of physical memory starting
-// at 0xFFFF800000000000
-void
-kvmalloc(void)
-{
-  kpml4 = (pde_t*) kalloc();
-  memset(kpml4, 0, PGSIZE);
-
-  // the kernel memory region starts at KERNBASE and up
-  // allocate one PDPT at the bottom of that range.
-  kpdpt = (pde_t*) kalloc();
-  memset(kpdpt, 0, PGSIZE);
-  kpml4[PMX(KERNBASE)] = v2p(kpdpt) | PTE_P | PTE_W;
-
-  // direct map first GB of physical addresses to KERNBASE
-  kpdpt[0] = 0 | PTE_PS | PTE_P | PTE_W;
-
-  // direct map 4th GB of physical addresses to KERNBASE+3GB
-  // this is a very lazy way to map IO memory (for lapic and ioapic)
-  // PTE_PWT and PTE_PCD for memory mapped I/O correctness. 
-  kpdpt[3] = 0xC0000000 | PTE_PS | PTE_P | PTE_W | PTE_PWT | PTE_PCD;  
-
-  switchkvm();
-}
-
-void
-switchkvm(void)
-{
-  lcr3(v2p(kpml4));
-}
-
-void
-switchuvm(struct proc *p)
-{
-  uint *tss;
-  pushcli();
-  if(p->pgdir == 0)
-    panic("switchuvm: no pgdir");
-  tss = (uint*) (((char*) cpu->local) + 1024);
-  tss_set_rsp(tss, 0, (addr_t)proc->kstack + KSTACKSIZE);
-  lcr3(v2p(p->pgdir));
-  popcli();
-
 }
 
 
@@ -414,7 +315,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
-      krelease(mem);
+      kfree(mem);
       return 0;
     }
   }
@@ -440,10 +341,9 @@ deallocuvm(pde_t *pgdir, uint64 oldsz, uint64 newsz)
     if(pte && (*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
       if(pa == 0)
-        panic("krelease");
+        panic("kfree");
       char *v = P2V(pa);
-      krelease(v);
-
+      kfree(v);
       *pte = 0;
     }
   }
@@ -481,24 +381,23 @@ freevm(pde_t *pml4)
                 if(pt[l] & PTE_P) {
                   char * v = P2V(PTE_ADDR(pt[l]));
               
-                  krelease((char*)v);
+                  kfree((char*)v);
                 }
               }              
               //freeing every page table
-              krelease((char*)pt);
+              kfree((char*)pt);
             }
           }          
           // freeing every page directory
-          krelease((char*)pd);
+          kfree((char*)pd);
         }
       }
       // freeing every page directory pointer table
-      krelease((char*)pdp);
+      kfree((char*)pdp);
     }
   }
   // freeing the pml4
-  krelease((char*)pml4);
-
+  kfree((char*)pml4);
 }
 
 // Clear PTE_U on a page. Used to create an inaccessible

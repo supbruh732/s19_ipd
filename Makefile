@@ -169,8 +169,6 @@ mkfs: mkfs.c fs.h
 
 UPROGS=\
 	_cat\
-	_dedup_reader\
-	_dedup_writer\
 	_echo\
 	_forktest\
 	_grep\
@@ -178,6 +176,9 @@ UPROGS=\
 	_kill\
 	_ln\
 	_ls\
+	_eager_mmap\
+	_lazy_mmap\
+	_bad_mmap\
 	_mkdir\
 	_rm\
 	_sh\
@@ -186,8 +187,8 @@ UPROGS=\
 	_wc\
 	_zombie\
 
-fs.img: mkfs README $(UPROGS)
-	./mkfs fs.img README $(UPROGS)
+fs.img: mkfs README LARGE $(UPROGS)
+	./mkfs fs.img LARGE README $(UPROGS)
 
 -include *.d
 

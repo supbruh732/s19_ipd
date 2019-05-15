@@ -112,6 +112,7 @@ argstr(int n, char **pp)
   return fetchstr(addr, pp);
 }
 
+
 extern addr_t sys_chdir(void);
 extern addr_t sys_close(void);
 extern addr_t sys_dup(void);
@@ -133,8 +134,7 @@ extern addr_t sys_unlink(void);
 extern addr_t sys_wait(void);
 extern addr_t sys_write(void);
 extern addr_t sys_uptime(void);
-extern addr_t sys_dedup(void);
-extern addr_t sys_freepages(void);
+extern addr_t sys_mmap(void);
 
 static addr_t (*syscalls[])(void) = {
 
@@ -159,8 +159,7 @@ static addr_t (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_dedup]   sys_dedup,
-[SYS_freepages] sys_freepages,
+[SYS_mmap]    sys_mmap,
 };
 
 void

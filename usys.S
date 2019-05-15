@@ -29,6 +29,4 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
-SYSCALL(dedup)
-SYSCALL(freepages)	
-	
+SYSCALL(mmap)

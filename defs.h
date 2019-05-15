@@ -71,14 +71,9 @@ void            ioapicinit(void);
 // kalloc.c
 char*           kalloc(void);
 void            kfree(char*);
-void            krelease(char*);
-void            kretain(char*);
-int             krefcount(char*);
+int             kfreepagecount();
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
-int             kfreepagecount(void);
-void            hashFunction(char*);
-int             getCheckSum(char*);
 
 // kbd.c
 void            kbdintr(void);
@@ -154,12 +149,11 @@ char*           strncpy(char*, const char*, int);
 
 // syscall.c
 void		syscall(void);
-void    syscallinit(void);
 int             argint(int, int*);
 int             argptr(int, char**, int);
 int             argstr(int, char**);
-int             argaddr(int, addr_t*);
-int             fetchaddr(addr_t, addr_t*);
+int             argaddr_t(int, addr_t*);
+int             fetchaddr_t(addr_t, addr_t*);
 int             fetchstr(addr_t, char**);
 void            syscall(void);
 int		fetchint(addr_t, int*);
@@ -191,8 +185,6 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
-void            dedup(void *vstart, void *vend);
-int             copyonwrite(char *v);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

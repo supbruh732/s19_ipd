@@ -75,6 +75,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (addr_t)forkret;
 
+  p->mmap_sz = 0;		//initialize mmap
   return p;
 }
 
@@ -155,7 +156,7 @@ fork(void)
 
   // Copy process state from p.
   if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
-    krelease(np->kstack);
+    kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
     return -1;
@@ -194,6 +195,8 @@ exit(void)
 {
   struct proc *p;
   int fd;
+
+  cprintf("Exiting process. System free pages is %d\n",kfreepagecount());
 
   if(proc == initproc)
     panic("init exiting");
@@ -251,7 +254,7 @@ wait(void)
       if(p->state == ZOMBIE){
         // Found one.
         pid = p->pid;
-        krelease(p->kstack);
+        kfree(p->kstack);
         p->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
@@ -370,6 +373,7 @@ forkret(void)
     iinit(ROOTDEV);
     initlog(ROOTDEV);
   }
+  struct proc *p = proc;
 
   // Return to "caller", actually trapret (see allocproc).
 }
@@ -492,4 +496,7 @@ procdump(void)
     }
     cprintf("\n");
   }
+
+  cprintf("Free pages: %d\n",kfreepagecount());
+  
 }

@@ -15,7 +15,7 @@ struct spinlock tickslock;
 uint ticks;
 
 static void 
-mkgate(uint *idt, uint n, addr_t kva, uint pl, uint trap) {
+mkgate(uint *idt, uint n, void *kva, uint pl, uint trap) {
   uint64 addr = (uint64) kva;
 
   n *= 4;
@@ -51,7 +51,7 @@ trap(struct trapframe *tf)
     if(proc->killed)
       exit();
     proc->tf = tf;
-
+    struct proc *p = proc;
     syscall();
     if(proc->killed)
       exit();
@@ -89,10 +89,6 @@ trap(struct trapframe *tf)
             cpunum(), tf->cs, tf->rip);
     lapiceoi();
     break;
-  case T_PGFLT:
-    // handle writes to deduped pages
-    if(copyonwrite((char*)rcr2()))
-      break;    
 
   //PAGEBREAK: 13
   default:
@@ -103,9 +99,16 @@ trap(struct trapframe *tf)
       cprintf("proc id: %d\n", proc->pid);
       panic("trap");
     }
+    
+    //cprintf("At the check\n");
+
+    if(page_fault(rcr2()) != -1){
+      return;
+    }
+
     // In user space, assume process misbehaved.
     cprintf("pid %d %s: trap %d err %d on cpu %d "
-            "rip 0x%x addr 0x%x--kill proc\n",
+            "rip 0x%x addr %p--kill proc\n",
             proc->pid, proc->name, tf->trapno, tf->err, cpunum(), tf->rip,
             rcr2());
     proc->killed = 1;

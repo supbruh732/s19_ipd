@@ -23,8 +23,7 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-int dedup(void);
-int freepages(void);
+char* mmap(int, int);
 
 // ulib.c
 int stat(char*, struct stat*);

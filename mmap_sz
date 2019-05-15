@@ -1,0 +1,177 @@
+./console.c:255:      if(proc->killed){
+./entry.S:176:  # store %rsp on the top of proc->kstack,
+./entry.S:177:  # then move proc->kstack+8 to %rsp this takes a little
+./exec.c:21:  oldpgdir = proc->pgdir;
+./exec.c:85:  proc->tf->rdi = argc;
+./exec.c:86:  proc->tf->rsi = sp - (argc+1)*sizeof(addr_t);
+./exec.c:97:  safestrcpy(proc->name, last, sizeof(proc->name));
+./exec.c:100:  proc->pgdir = pgdir;
+./exec.c:101:  proc->sz = sz;
+./exec.c:102:  proc->tf->rip = elf.entry;  // main
+./exec.c:103:  proc->tf->rcx = elf.entry;
+./exec.c:104:  proc->tf->rsp = sp;
+./fs.c:619:    ip = idup(proc->cwd);
+./kernel.asm:231:  # store %rsp on the top of proc->kstack,
+./kernel.asm:232:  # then move proc->kstack+8 to %rsp this takes a little
+./kernel.asm:1836:      if(proc->killed){
+./kernel.asm:2118:  oldpgdir = proc->pgdir;
+./kernel.asm:2447:  proc->tf->rdi = argc;
+./kernel.asm:2453:  proc->tf->rsi = sp - (argc+1)*sizeof(addr_t);
+./kernel.asm:2516:  safestrcpy(proc->name, last, sizeof(proc->name));
+./kernel.asm:2529:  proc->pgdir = pgdir;
+./kernel.asm:2534:  proc->sz = sz;
+./kernel.asm:2539:  proc->tf->rip = elf.entry;  // main
+./kernel.asm:2545:  proc->tf->rcx = elf.entry;
+./kernel.asm:2551:  proc->tf->rsp = sp;
+./kernel.asm:2641:  proc->tf->rsi = sp - (argc+1)*sizeof(addr_t);
+./kernel.asm:5457:    ip = idup(proc->cwd);
+./kernel.asm:5542:    ip = idup(proc->cwd);
+./kernel.asm:9364:        cpus[ncpu].apicid = proc->apicid;  // apicid may differ from ncpu
+./kernel.asm:9747:      if(p->readopen == 0 || proc->killed){
+./kernel.asm:9872:    if(proc->killed){
+./kernel.asm:10356:  sz = proc->sz;
+./kernel.asm:10364:    if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0)
+./kernel.asm:10386:    if((sz = deallocuvm(proc->pgdir, sz, sz + n)) == 0)
+./kernel.asm:10407:  proc->sz = sz;
+./kernel.asm:10452:  if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
+./kernel.asm:10490:  np->sz = proc->sz;
+./kernel.asm:10501:  *np->tf = *proc->tf;
+./kernel.asm:10522:    if(proc->ofile[i])
+./kernel.asm:10531:      np->ofile[i] = filedup(proc->ofile[i]);
+./kernel.asm:10548:  *np->tf = *proc->tf;
+./kernel.asm:10557:    if(proc->ofile[i])
+./kernel.asm:10558:      np->ofile[i] = filedup(proc->ofile[i]);
+./kernel.asm:10559:  np->cwd = idup(proc->cwd);
+./kernel.asm:10571:  safestrcpy(np->name, proc->name, sizeof(proc->name));
+./kernel.asm:10658:    if(proc->ofile[fd]){
+./kernel.asm:10667:      fileclose(proc->ofile[fd]);
+./kernel.asm:10678:      proc->ofile[fd] = 0;
+./kernel.asm:10695:      fileclose(proc->ofile[fd]);
+./kernel.asm:10696:      proc->ofile[fd] = 0;
+./kernel.asm:10705:  iput(proc->cwd);
+./kernel.asm:10718:  proc->cwd = 0;
+./kernel.asm:10732:  wakeup1(proc->parent);
+./kernel.asm:10775:  wakeup1(proc->parent);
+./kernel.asm:10790:  proc->state = ZOMBIE;
+./kernel.asm:10920:    if(!havekids || proc->killed){
+./kernel.asm:11069:// be proc->intena and proc->ncli, but that would
+./kernel.asm:11107:  if(proc->state == RUNNING)
+./kernel.asm:11138:  swtch(&proc->context, cpu->scheduler);
+./kernel.asm:11174:  proc->state = RUNNABLE;
+./kernel.asm:11305:  proc->chan = chan;
+./kernel.asm:11310:  proc->state = SLEEPING;
+./kernel.asm:11320:  proc->chan = 0;
+./kernel.asm:11752:  lk->pid = proc->pid;
+./kernel.asm:12885:  if(addr >= proc->sz || addr+4 > proc->sz)
+./kernel.asm:12923:  if(addr >= proc->sz || addr+sizeof(addr_t) > proc->sz)
+./kernel.asm:12964:  if(addr >= proc->sz)
+./kernel.asm:12977:  ep = (char*)proc->sz;
+./kernel.asm:13000:  if(addr >= proc->sz)
+./kernel.asm:13003:  ep = (char*)proc->sz;
+./kernel.asm:13038:  case 0: return proc->tf->rdi;
+./kernel.asm:13044:  case 1: return proc->tf->rsi;
+./kernel.asm:13050:  case 2: return proc->tf->rdx;
+./kernel.asm:13056:  case 3: return proc->tf->r10;
+./kernel.asm:13062:  case 4: return proc->tf->r8;
+./kernel.asm:13068:  case 5: return proc->tf->r9;
+./kernel.asm:13164:  if(size < 0 || (uint)i >= proc->sz || (uint)i+size > proc->sz)
+./kernel.asm:13250:  num = proc->tf->rax;
+./kernel.asm:13269:    proc->tf->rax = syscalls[num]();
+./kernel.asm:13283:            proc->pid, proc->name, num);
+./kernel.asm:13290:  num = proc->tf->rax;
+./kernel.asm:13292:    proc->tf->rax = syscalls[num]();
+./kernel.asm:13306:            proc->pid, proc->name, num);
+./kernel.asm:13307:    proc->tf->rax = -1;
+./kernel.asm:13349:  if(fd < 0 || fd >= NOFILE || (f=proc->ofile[fd]) == 0)
+./kernel.asm:13404:    if(proc->ofile[fd] == 0){
+./kernel.asm:13413:      proc->ofile[fd] = f;
+./kernel.asm:13433:    if(proc->ofile[fd] == 0){
+./kernel.asm:13434:      proc->ofile[fd] = f;
+./kernel.asm:13626:  proc->ofile[fd] = 0;
+./kernel.asm:14874:  iput(proc->cwd);
+./kernel.asm:14887:  proc->cwd = ip;
+./kernel.asm:15093:      proc->ofile[fd0] = 0;
+./kernel.asm:15220:  return proc->pid;
+./kernel.asm:15251:  addr = proc->sz;
+./kernel.asm:15362:    if(proc->killed){
+./kernel.asm:15894:    if(proc->killed)
+./kernel.asm:15904:    proc->tf = tf;
+./kernel.asm:15917:    if(proc->killed)
+./kernel.asm:16083:      cprintf("proc id: %d\n", proc->pid);
+./kernel.asm:16118:            proc->pid, proc->name, tf->trapno, tf->err, cpunum(), tf->rip,
+./kernel.asm:16125:      cprintf("proc id: %d\n", proc->pid);
+./kernel.asm:16146:            proc->pid, proc->name, tf->trapno, tf->err, cpunum(), tf->rip,
+./kernel.asm:16148:    proc->killed = 1;
+./kernel.asm:16165:  if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+./kernel.asm:16187:  if(proc && proc->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER)
+./kernel.asm:16207:  if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+./kernel.asm:16227:    proc->tf = tf;
+./kernel.asm:16230:    if(proc->killed)
+./kernel.asm:16237:  if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+./kernel.asm:19865:  tss_set_rsp(tss, 0, (addr_t)proc->kstack + KSTACKSIZE);
+./mp.c:109:        cpus[ncpu].apicid = proc->apicid;  // apicid may differ from ncpu
+./pipe.c:86:      if(p->readopen == 0 || proc->killed){
+./pipe.c:107:    if(proc->killed){
+./proc.c:128:  sz = proc->sz;
+./proc.c:130:    if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0)
+./proc.c:133:    if((sz = deallocuvm(proc->pgdir, sz, sz + n)) == 0)
+./proc.c:136:  proc->sz = sz;
+./proc.c:157:  if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
+./proc.c:163:  np->sz = proc->sz;
+./proc.c:165:  *np->tf = *proc->tf;
+./proc.c:171:    if(proc->ofile[i])
+./proc.c:172:      np->ofile[i] = filedup(proc->ofile[i]);
+./proc.c:173:  np->cwd = idup(proc->cwd);
+./proc.c:175:  safestrcpy(np->name, proc->name, sizeof(proc->name));
+./proc.c:205:    if(proc->ofile[fd]){
+./proc.c:206:      fileclose(proc->ofile[fd]);
+./proc.c:207:      proc->ofile[fd] = 0;
+./proc.c:212:  iput(proc->cwd);
+./proc.c:214:  proc->cwd = 0;
+./proc.c:219:  wakeup1(proc->parent);
+./proc.c:231:  proc->state = ZOMBIE;
+./proc.c:270:    if(!havekids || proc->killed){
+./proc.c:322:// and have changed proc->state. Saves and restores
+./proc.c:325:// be proc->intena and proc->ncli, but that would
+./proc.c:338:  if(proc->state == RUNNING)
+./proc.c:344:  swtch(&proc->context, cpu->scheduler);
+./proc.c:353:  proc->state = RUNNABLE;
+./proc.c:404:  proc->chan = chan;
+./proc.c:405:  proc->state = SLEEPING;
+./proc.c:409:  proc->chan = 0;
+./sleeplock.c:30:  lk->pid = proc->pid;
+./syscall.c:20:  if(addr >= proc->sz || addr+4 > proc->sz)
+./syscall.c:30:  if(addr >= proc->sz || addr+sizeof(addr_t) > proc->sz)
+./syscall.c:45:  if(addr >= proc->sz)
+./syscall.c:48:  ep = (char*)proc->sz;
+./syscall.c:60:  case 0: return proc->tf->rdi;
+./syscall.c:61:  case 1: return proc->tf->rsi;
+./syscall.c:62:  case 2: return proc->tf->rdx;
+./syscall.c:63:  case 3: return proc->tf->r10;
+./syscall.c:64:  case 4: return proc->tf->r8;
+./syscall.c:65:  case 5: return proc->tf->r9;
+./syscall.c:96:  if(size < 0 || (uint)i >= proc->sz || (uint)i+size > proc->sz)
+./syscall.c:170:  num = proc->tf->rax;
+./syscall.c:172:    proc->tf->rax = syscalls[num]();
+./syscall.c:175:            proc->pid, proc->name, num);
+./syscall.c:176:    proc->tf->rax = -1;
+./sysfile.c:29:  if(fd < 0 || fd >= NOFILE || (f=proc->ofile[fd]) == 0)
+./sysfile.c:46:    if(proc->ofile[fd] == 0){
+./sysfile.c:47:      proc->ofile[fd] = f;
+./sysfile.c:100:  proc->ofile[fd] = 0;
+./sysfile.c:389:  iput(proc->cwd);
+./sysfile.c:391:  proc->cwd = ip;
+./sysfile.c:435:      proc->ofile[fd0] = 0;
+./sysproc.c:42:  return proc->pid;
+./sysproc.c:53:  addr = proc->sz;
+./sysproc.c:80:    if(proc->killed){
+./trap.c:51:    if(proc->killed)
+./trap.c:53:    proc->tf = tf;
+./trap.c:56:    if(proc->killed)
+./trap.c:99:      cprintf("proc id: %d\n", proc->pid);
+./trap.c:105:            proc->pid, proc->name, tf->trapno, tf->err, cpunum(), tf->rip,
+./trap.c:107:    proc->killed = 1;
+./trap.c:113:  if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+./trap.c:118:  if(proc && proc->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER)
+./trap.c:122:  if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+./vm.c:165:  tss_set_rsp(tss, 0, (addr_t)proc->kstack + KSTACKSIZE);

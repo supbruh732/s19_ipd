@@ -47,6 +47,7 @@ printf(int fd, char *fmt, ...)
   va_start(ap, fmt);
 
   state = 0;
+  //ap = (uint*)(void*)&fmt + 1;
   for(i = 0; fmt[i]; i++){
     c = fmt[i] & 0xff;
     if(state == 0){
@@ -58,10 +59,16 @@ printf(int fd, char *fmt, ...)
     } else if(state == '%'){
       if(c == 'd'){
         printint(fd, va_arg(ap, int), 10, 1);
+        //printint(fd, *ap, 10, 1);
+        //ap++;
       } else if(c == 'x' || c == 'p'){
-        printint(fd, va_arg(ap, int), 16, 1);
+        printint(fd, va_arg(ap, int), 10, 1);
+        //printint(fd, *ap, 16, 0);
+        //ap++;
       } else if(c == 's'){
+        //s = (char*)*ap;
         s = va_arg(ap, char*);
+        //ap++;
         if(s == 0)
           s = "(null)";
         while(*s != 0){
@@ -69,6 +76,8 @@ printf(int fd, char *fmt, ...)
           s++;
         }
       } else if(c == 'c'){
+        //putc(fd, *ap);
+        //ap++;
         putc(fd, va_arg(ap, uint));
       } else if(c == '%'){
         putc(fd, c);
