@@ -25,7 +25,13 @@ void            bwrite(struct buf*);
 void            consoleinit(void);
 void            cprintf(char*, ...);
 void            consoleintr(int(*)(void));
+int             consoleioctl(struct file *,int,int);
 void            panic(char*) __attribute__((noreturn));
+
+//display.c
+void            displayinit(void);
+int             displayioctl(struct file *, int, int);
+
 
 // exec.c
 int             exec(char*, char**);
@@ -33,6 +39,7 @@ int             exec(char*, char**);
 // file.c
 struct file*    filealloc(void);
 void            fileclose(struct file*);
+int             fileioctl(struct file*, int, int);
 struct file*    filedup(struct file*);
 void            fileinit(void);
 int             fileread(struct file*, char*, int n);
@@ -71,7 +78,6 @@ void            ioapicinit(void);
 // kalloc.c
 char*           kalloc(void);
 void            kfree(char*);
-int             kfreepagecount();
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
 

@@ -15,6 +15,8 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "traps.h"
+
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -100,6 +102,22 @@ sys_close(void)
   proc->ofile[fd] = 0;
   fileclose(f);
   return 0;
+}
+
+int
+sys_ioctl(void) 
+{
+  int fd, param, value;
+  struct file *f;
+  
+  if(argfd(0, &fd, &f) < 0)
+    return -1;
+  if(argint(1, &param) < 0)
+    return -1;
+  if(argint(2, &value) < 0)
+    return -1;
+  
+  return fileioctl(f,param,value);
 }
 
 int
@@ -250,6 +268,7 @@ create(char *path, short type, short major, short minor)
 
   if((ip = dirlookup(dp, name, &off)) != 0){
     iunlockput(dp);
+
     ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
@@ -331,6 +350,7 @@ sys_open(void)
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
   return fd;
 }
+
 
 int
 sys_mkdir(void)

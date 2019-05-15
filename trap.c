@@ -99,16 +99,9 @@ trap(struct trapframe *tf)
       cprintf("proc id: %d\n", proc->pid);
       panic("trap");
     }
-    
-    //cprintf("At the check\n");
-
-    if(page_fault(rcr2()) != -1){
-      return;
-    }
-
     // In user space, assume process misbehaved.
     cprintf("pid %d %s: trap %d err %d on cpu %d "
-            "rip 0x%x addr %p--kill proc\n",
+            "rip 0x%x addr 0x%x--kill proc\n",
             proc->pid, proc->name, tf->trapno, tf->err, cpunum(), tf->rip,
             rcr2());
     proc->killed = 1;

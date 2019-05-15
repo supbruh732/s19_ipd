@@ -57,18 +57,9 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct lazy_data {
-  addr_t start;                // start of the address for file
-  addr_t end;                  // end of the address for file
-
-  int fd;                      // file descriptor number
-  //struct file *f;            // should be able to get from fd
-};
-
-
 // Per-process state
 struct proc {
-  addr_t sz;                   // Size of process memory (bytes)
+  addr_t sz;                     // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
@@ -80,15 +71,7 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
-  uint mmap_sz;		             // size of the mmap process
   char name[16];               // Process name (debugging)
-
-  int faults;                  // number of page faults encountered
-  
-  struct lazy_data meta[NOFILE];  // all the lazy mapped processes
-                                  // NOFILE = 16 = max # of files open
-                                  // max # of lazy mapped processes should be same??
-
 };
 
 // Process memory is laid out contiguously, low addresses first:
